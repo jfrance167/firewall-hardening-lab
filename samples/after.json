@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-13T14:10:00+00:00",
+  "target": "192.168.56.10",
+  "timeout_seconds": 1.0,
+  "results": [
+    {"port": 8080, "state": "open", "latency_ms": 1.25, "detail": "TCP connection completed"},
+    {"port": 8443, "state": "open", "latency_ms": 1.29, "detail": "TCP connection completed"},
+    {"port": 9000, "state": "filtered", "latency_ms": 1001.07, "detail": "connection timed out"}
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "name": "isolated-ubuntu-lab-v1",
+  "allowed_ports": [8080, 8443],
+  "blocked_ports": [9000]
+}

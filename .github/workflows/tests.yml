@@ -1,0 +1,28 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Compile Python
+        run: python -m py_compile scan_compare.py lab_services.py tests/test_scan_compare.py
+      - name: Run tests
+        run: python -W error -m unittest discover -s tests -v
+      - name: Parse shell scripts
+        if: runner.os == 'Linux'
+        run: bash -n apply_firewall.sh rollback_firewall.sh
