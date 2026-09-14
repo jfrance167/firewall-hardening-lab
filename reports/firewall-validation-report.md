@@ -1,9 +1,9 @@
 # Firewall Hardening Validation Report
 
 - Policy: `isolated-ubuntu-lab-v1`
-- Target: `192.168.56.10`
-- Baseline captured: 2026-09-13T14:00:00+00:00
-- Hardened scan captured: 2026-09-13T14:10:00+00:00
+- Target: `127.0.0.1`
+- Baseline captured: 2026-09-14T03:52:33+00:00
+- Hardened scan captured: 2026-09-14T03:52:55+00:00
 - Probe mode: `banner`
 - Validation result: **PASS**
 - Previously open ports mitigated: 1

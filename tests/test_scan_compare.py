@@ -40,10 +40,11 @@ class PortParsingTests(unittest.TestCase):
 class EvidenceTests(unittest.TestCase):
     def make_evidence(self, states: dict[int, str]) -> scanner.ScanEvidence:
         return scanner.ScanEvidence(
-            schema_version=1,
+            schema_version=2,
             generated_at="2026-09-13T12:00:00+00:00",
             target="192.168.56.10",
             timeout_seconds=1.0,
+            probe_mode="connect",
             results=[
                 scanner.PortResult(port, state, 1.5, "test")
                 for port, state in sorted(states.items())
@@ -108,10 +109,11 @@ class EvidenceTests(unittest.TestCase):
     def test_comparison_requires_matching_targets_and_complete_ports(self) -> None:
         before = self.make_evidence({8080: "open"})
         other = scanner.ScanEvidence(
-            1,
+            2,
             before.generated_at,
             "192.168.56.11",
             1.0,
+            "connect",
             before.results,
         )
         policy = {"name": "test", "allowed_ports": [8080], "blocked_ports": []}
@@ -156,6 +158,8 @@ class LiveSocketTests(unittest.TestCase):
             scanner.scan_target("127.0.0.1", [80], 0, 1)
         with self.assertRaises(ValueError):
             scanner.scan_target("127.0.0.1", [80], 1, 0)
+        with self.assertRaises(ValueError):
+            scanner.scan_target("127.0.0.1", [80], 1, 1, "active")
 
 
 class CliTests(unittest.TestCase):

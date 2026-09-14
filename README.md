@@ -12,7 +12,7 @@ Use it only against systems you own or are authorized to test.
 Demonstrate an end-to-end host-hardening workflow:
 
 1. Run harmless services on an isolated Ubuntu virtual machine.
-2. Capture a baseline scan from the Windows host-only network.
+2. Capture a baseline scan through loopback-only VirtualBox NAT forwards.
 3. Apply a default-deny inbound firewall policy.
 4. Preserve required access while blocking an unnecessary service.
 5. Rescan from the same source and compare the evidence automatically.
@@ -21,15 +21,17 @@ Demonstrate an end-to-end host-hardening workflow:
 ## Lab topology
 
 ```text
-Windows host / scanner              Isolated Ubuntu VM
-192.168.56.1                 ->     192.168.56.x
-                                     8080 allowed from any source
-                                     8443 allowed from admin subnet
-                                     9000 blocked after hardening
+Windows host / scanner          VirtualBox NAT          Isolated Ubuntu VM
+127.0.0.1 only             ->  loopback forwards  ->   10.0.2.15
+                                                       8080 allowed
+                                                       8443 admin-only
+                                                       9000 blocked
 ```
 
-The VM should retain NAT for outbound package access and use a second,
-host-only adapter for the scan. Do not use bridged networking for the lab.
+The VM uses NAT for outbound access. VirtualBox forwards only the tested ports
+to host loopback, so the services are not exposed to the physical LAN. Bridged
+networking is not used. Banner probing requires an actual guest response and
+avoids treating the NAT listener itself as proof that a service is reachable.
 
 ## Security design
 
@@ -52,6 +54,7 @@ host-only adapter for the scan. Do not use bridged networking for the lab.
 - `config/policy.json` — machine-readable expected allowed/blocked ports
 - `samples/` — clearly labeled synthetic evidence for demonstrating reporting
 - `reports/sample-report.md` — report generated from the synthetic evidence
+- `reports/firewall-validation-report.md` — sanitized real VM result
 - `VALIDATION.md` — completed checks and the current isolated-VM evidence status
 - `tests/` — validation, comparison, safety, CLI, and live-socket tests
 
@@ -76,30 +79,32 @@ isolated VM. In the VM, start the harmless services:
 python3 lab_services.py
 ```
 
-From Windows, replace the example with the VM's host-only address:
+From Windows, scan the loopback-only VirtualBox forwards:
 
 ```powershell
-python scan_compare.py scan 192.168.56.10 `
+python scan_compare.py scan 127.0.0.1 `
   --ports 8080,8443,9000 `
+  --probe-mode banner `
   --output .private\before.json
 ```
 
 Confirm that all three lab ports are open. Then apply the firewall from the VM
-console, supplying the actual trusted host-only subnet:
+console, supplying the VirtualBox NAT subnet:
 
 ```bash
-sudo ./apply_firewall.sh 192.168.56.0/24
+sudo ./apply_firewall.sh 10.0.2.0/24
 ```
 
 The policy permits established traffic, loopback, ICMP, DHCP responses, port
-8080 from any source, and ports 22/8443 from the trusted admin subnet. All
-other inbound traffic is logged at a limited rate and dropped.
+8080 from any source, and ports 22/8443 from the VirtualBox NAT admin subnet.
+All other inbound traffic is logged at a limited rate and dropped.
 
 Capture hardened evidence from the same Windows source:
 
 ```powershell
-python scan_compare.py scan 192.168.56.10 `
+python scan_compare.py scan 127.0.0.1 `
   --ports 8080,8443,9000 `
+  --probe-mode banner `
   --output .private\after.json
 
 python scan_compare.py compare `
@@ -109,8 +114,8 @@ python scan_compare.py compare `
   --output reports\live-validation.md
 ```
 
-A successful result keeps 8080 and 8443 open from the trusted host while port
-9000 changes from open to filtered or closed.
+A successful result keeps 8080 and 8443 responsive from the trusted host while
+port 9000 stops returning its service banner and becomes filtered or closed.
 
 ## Rollback
 
@@ -144,9 +149,18 @@ python -W error -m unittest discover -s tests -v
 GitHub Actions runs compilation and all tests with Python 3.10 and 3.13 on
 Windows and Ubuntu. Linux runners also parse both shell scripts.
 
+## Completed validation
+
+The isolated VM exercise passed: ports 8080 and 8443 remained responsive while
+port 9000 changed from open to filtered. The scoped rollback was then applied,
+and port 9000 returned to open. See `VALIDATION.md` for environment details and
+evidence hashes, and `reports/firewall-validation-report.md` for the sanitized
+before-and-after table.
+
 ## Interpretation and limitations
 
-- `open` means a TCP connection completed from the scanner's position.
+- In connect mode, `open` means a TCP connection completed.
+- In banner mode, `open` also requires a response from the guest service.
 - `closed` generally means the host actively refused the connection.
 - `filtered` means the connection timed out; a firewall is one possible cause.
 - Results cover only the tested ports, address, source network, and time.

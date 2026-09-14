@@ -19,7 +19,7 @@ from time import perf_counter
 from typing import Sequence
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MAX_PORTS = 1024
 VALID_STATES = {"open", "closed", "filtered", "unreachable", "error"}
 
@@ -38,6 +38,7 @@ class ScanEvidence:
     generated_at: str
     target: str
     timeout_seconds: float
+    probe_mode: str
     results: list[PortResult]
 
     def to_dict(self) -> dict[str, object]:
@@ -46,6 +47,7 @@ class ScanEvidence:
             "generated_at": self.generated_at,
             "target": self.target,
             "timeout_seconds": self.timeout_seconds,
+            "probe_mode": self.probe_mode,
             "results": [asdict(result) for result in self.results],
         }
 
@@ -106,13 +108,29 @@ def classify_socket_error(error: OSError) -> tuple[str, str]:
     return "error", f"socket error {win_code or code or 'unknown'}"
 
 
-def scan_port(target: str, port: int, timeout: float) -> PortResult:
+def scan_port(
+    target: str, port: int, timeout: float, probe_mode: str = "connect"
+) -> PortResult:
     started = perf_counter()
     state = "open"
     detail = "TCP connection completed"
     try:
-        with socket.create_connection((target, port), timeout=timeout):
-            pass
+        with socket.create_connection((target, port), timeout=timeout) as connection:
+            if probe_mode == "banner":
+                connection.settimeout(timeout)
+                try:
+                    response = connection.recv(256)
+                except TimeoutError:
+                    state = "filtered"
+                    detail = "TCP connected but no service response was received"
+                except OSError as exc:
+                    state, detail = classify_socket_error(exc)
+                else:
+                    if response:
+                        detail = "TCP connection and service response completed"
+                    else:
+                        state = "closed"
+                        detail = "TCP peer closed without a service response"
     except OSError as exc:
         state, detail = classify_socket_error(exc)
     latency = round((perf_counter() - started) * 1000, 2)
@@ -120,7 +138,11 @@ def scan_port(target: str, port: int, timeout: float) -> PortResult:
 
 
 def scan_target(
-    target: str, ports: Sequence[int], timeout: float, workers: int
+    target: str,
+    ports: Sequence[int],
+    timeout: float,
+    workers: int,
+    probe_mode: str = "connect",
 ) -> ScanEvidence:
     if not ports or len(set(ports)) != len(ports):
         raise ValueError("ports must be a nonempty sequence of unique values")
@@ -130,15 +152,20 @@ def scan_target(
         raise ValueError("timeout must be greater than 0 and at most 30 seconds")
     if workers < 1 or workers > 256:
         raise ValueError("workers must be between 1 and 256")
+    if probe_mode not in {"connect", "banner"}:
+        raise ValueError("probe mode must be 'connect' or 'banner'")
     results: list[PortResult] = []
     with ThreadPoolExecutor(max_workers=min(workers, len(ports))) as executor:
         futures = {
-            executor.submit(scan_port, target, port, timeout): port for port in ports
+            executor.submit(scan_port, target, port, timeout, probe_mode): port
+            for port in ports
         }
         for future in as_completed(futures):
             results.append(future.result())
     results.sort(key=lambda result: result.port)
-    return ScanEvidence(SCHEMA_VERSION, utc_now(), target, timeout, results)
+    return ScanEvidence(
+        SCHEMA_VERSION, utc_now(), target, timeout, probe_mode, results
+    )
 
 
 def atomic_write(path: Path, content: str) -> None:
@@ -168,7 +195,12 @@ def load_evidence(path: Path) -> ScanEvidence:
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"could not read evidence {path}: {exc}") from exc
     expected = {
-        "schema_version", "generated_at", "target", "timeout_seconds", "results"
+        "schema_version",
+        "generated_at",
+        "target",
+        "timeout_seconds",
+        "probe_mode",
+        "results",
     }
     if not isinstance(document, dict) or set(document) != expected:
         raise ValueError(f"invalid evidence structure in {path}")
@@ -180,6 +212,8 @@ def load_evidence(path: Path) -> ScanEvidence:
         raise ValueError(f"invalid evidence metadata in {path}")
     timeout_value = document["timeout_seconds"]
     if isinstance(timeout_value, bool) or not isinstance(timeout_value, (int, float)):
+        raise ValueError(f"invalid evidence metadata in {path}")
+    if document["probe_mode"] not in {"connect", "banner"}:
         raise ValueError(f"invalid evidence metadata in {path}")
     try:
         generated = datetime.fromisoformat(document["generated_at"].replace("Z", "+00:00"))
@@ -227,6 +261,7 @@ def load_evidence(path: Path) -> ScanEvidence:
         generated.astimezone(timezone.utc).isoformat(timespec="seconds"),
         document["target"],
         timeout,
+        document["probe_mode"],
         sorted(results, key=lambda result: result.port),
     )
 
@@ -260,6 +295,8 @@ def compare_evidence(
 ) -> tuple[list[dict[str, object]], bool]:
     if before.target != after.target:
         raise ValueError("before and after evidence target different hosts")
+    if before.probe_mode != after.probe_mode:
+        raise ValueError("before and after evidence use different probe modes")
     before_by_port = {result.port: result for result in before.results}
     after_by_port = {result.port: result for result in after.results}
     required = set(policy["allowed_ports"]) | set(policy["blocked_ports"])
@@ -309,6 +346,7 @@ def render_report(
         f"- Target: `{before.target}`",
         f"- Baseline captured: {before.generated_at}",
         f"- Hardened scan captured: {after.generated_at}",
+        f"- Probe mode: `{before.probe_mode}`",
         f"- Validation result: **{status}**",
         f"- Previously open ports mitigated: {mitigated}",
         "",
@@ -348,6 +386,12 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--output", required=True, type=Path)
     scan.add_argument("--timeout", type=float, default=1.0)
     scan.add_argument("--workers", type=int, default=64)
+    scan.add_argument(
+        "--probe-mode",
+        choices=("connect", "banner"),
+        default="connect",
+        help="require only a TCP connection or a passive service response",
+    )
     scan.add_argument("--allow-public", action="store_true")
     compare = subparsers.add_parser("compare", help="compare scan evidence")
     compare.add_argument("--before", required=True, type=Path)
@@ -363,7 +407,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "scan":
             target = validate_target(args.target, args.allow_public)
             ports = parse_ports(args.ports)
-            evidence = scan_target(target, ports, args.timeout, args.workers)
+            evidence = scan_target(
+                target, ports, args.timeout, args.workers, args.probe_mode
+            )
             save_evidence(evidence, args.output.resolve())
             counts: dict[str, int] = {}
             for result in evidence.results:
