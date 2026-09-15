@@ -6,3 +6,10 @@ venv/
 .private/
 reports/live-*.md
 reports/live-*.json
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+id_rsa*
+id_ed25519*

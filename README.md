@@ -7,6 +7,16 @@ interpretation rather than treating a single port scan as proof of security.
 
 Use it only against systems you own or are authorized to test.
 
+## Security Notice
+
+This repository is an educational hardening lab, not a production firewall
+baseline. Apply its rules only to an isolated system you own or are explicitly
+authorized to administer, preserve console access, and test rollback before
+changing a real host. The included services and evidence are synthetic or
+sanitized and contain no real credentials.
+
+Do not deploy this project in production.
+
 ## Objective
 
 Demonstrate an end-to-end host-hardening workflow:
