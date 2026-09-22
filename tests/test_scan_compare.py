@@ -32,7 +32,7 @@ class PortParsingTests(unittest.TestCase):
         self.assertEqual(scanner.validate_target("8.8.8.8", True), "8.8.8.8")
 
     def test_hostnames_and_unspecified_targets_are_rejected(self) -> None:
-        for value in ("localhost", "0.0.0.0", "::"):
+        for value in ("localhost", "0.0.0.0", "::"):  # nosec B104 -- rejection test
             with self.subTest(value=value), self.assertRaises(ValueError):
                 scanner.validate_target(value)
 
