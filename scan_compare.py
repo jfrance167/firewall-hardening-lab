@@ -365,11 +365,11 @@ def render_report(
             "",
             "## Interpretation",
             "",
-            "A blocked or filtered port shows that TCP access was prevented from the "
-            "scanner's network position. An allowed port remaining open confirms "
+            "A blocked or filtered port shows that TCP access was prevented from the " +
+            "scanner's network position. An allowed port remaining open confirms " +
             "required connectivity survived the policy change.",
             "",
-            "This result applies only to the tested target, ports, source network, "
+            "This result applies only to the tested target, ports, source network, " +
             "time, and protocol. It does not prove that every host exposure is secure.",
             "",
         ]
