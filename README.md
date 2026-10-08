@@ -7,6 +7,22 @@ interpretation rather than treating a single port scan as proof of security.
 
 Use it only against systems you own or are authorized to test.
 
+## Project overview
+
+| Focus | Evidence | Scope |
+| --- | --- | --- |
+| Reduce service exposure while preserving required connectivity | [Sanitized VM report](reports/firewall-validation-report.md) · [Validation record](VALIDATION.md) | Isolated Ubuntu VM; TCP checks from one trusted source |
+
+### Recorded result
+
+| TCP port | Before | After policy |
+| --- | --- | --- |
+| 8080 | Open | Open |
+| 8443 | Open | Open |
+| 9000 | Open | Filtered |
+
+The report records a passing banner-probe comparison. The documented rollback restored port 9000; results apply only to the tested source, ports, protocol, and time.
+
 ## Security Notice
 
 This repository is an educational hardening lab, not a production firewall
@@ -30,12 +46,13 @@ Demonstrate an end-to-end host-hardening workflow:
 
 ## Lab topology
 
-```text
-Windows host / scanner          VirtualBox NAT          Isolated Ubuntu VM
-127.0.0.1 only             ->  loopback forwards  ->   10.0.2.15
-                                                       8080 allowed
-                                                       8443 admin-only
-                                                       9000 blocked
+```mermaid
+flowchart LR
+    W["Windows scanner: 127.0.0.1"] --> N["VirtualBox NAT: loopback forwards"]
+    N --> U["Isolated Ubuntu VM: nftables"]
+    U --> A["8080: allowed"]
+    U --> B["8443: admin-only"]
+    U -. "Blocked after policy" .-> C["9000: lab service"]
 ```
 
 The VM uses NAT for outbound access. VirtualBox forwards only the tested ports
@@ -185,3 +202,4 @@ before-and-after table.
 > measured service exposure before and after a default-deny policy, preserved
 > authorized access, automated evidence comparison, and implemented scoped
 > rollback and CI testing.
+
