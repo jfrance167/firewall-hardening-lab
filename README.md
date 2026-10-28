@@ -203,3 +203,6 @@ before-and-after table.
 > authorized access, automated evidence comparison, and implemented scoped
 > rollback and CI testing.
 
+## License
+
+Original contributions are licensed under [MIT](LICENSE). See [licensing scope](LICENSING.md) for third-party exclusions.
